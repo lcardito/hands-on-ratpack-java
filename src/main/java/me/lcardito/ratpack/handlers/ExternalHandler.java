@@ -28,7 +28,8 @@ public class ExternalHandler implements Handler {
 
 		tweets.then(string -> {
 			log.info(format("Got my tweets %s!", string));
-			ctx.render(format("Got my tweets %s!", string));
+			log.info(Thread.currentThread().getName());
+			ctx.render(String.valueOf(System.currentTimeMillis()));
 		});
 	}
 

@@ -20,15 +20,11 @@ import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static java.util.Arrays.asList;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
 
@@ -148,31 +144,41 @@ public class AppTest {
 
 	@Test
 	public void shouldNotBlockWhenUsingIO() throws Exception {
+		CountDownLatch lock = new CountDownLatch(2);
+
 		wireMockRule.stubFor(get(urlMatching(".*"))
 			.willReturn(aResponse()
 				.withStatus(200)
-				.withFixedDelay(10000)
+				.withFixedDelay(2000)
 				.withBody("My long tweets")
 			));
 
-		ExecutorService executorService = Executors.newFixedThreadPool(2);
+		CompletableFuture<Response> extFuture = CompletableFuture.supplyAsync(() ->
+			jerseyClient.target(Try.of(() -> new URI(serverBackedApplicationUnderTest.getAddress().toString())).get())
+				.path("external")
+				.request()
+				.get());
 
+		extFuture.thenAccept(response -> {
+			System.out.println("Done with external");
+			lock.countDown();
+		});
 
-		List<Try> responses = executorService
-			.invokeAll(asList(getResponseCallable("user"), getResponseCallable("external"), getResponseCallable("user")))
-			.parallelStream()
-			.sequential()
-			.map(responseFuture -> Try.of(responseFuture::get)).collect(Collectors.toList());
+		Thread.sleep(1000);
 
-		executorService.shutdownNow();
+		CompletableFuture<Response> userFuture = CompletableFuture.supplyAsync(() ->
+			jerseyClient.target(Try.of(() -> new URI(serverBackedApplicationUnderTest.getAddress().toString())).get())
+				.path("user")
+				.request()
+				.get());
 
+		userFuture.thenAccept(response -> {
+			System.out.println("Done with user");
+			lock.countDown();
+		});
+
+		assertThat(lock.await(2500, TimeUnit.MILLISECONDS), is(true));;
 		wireMockRule.verify(1, getRequestedFor(urlPathMatching(".*")));
-	}
 
-	private Callable<Response> getResponseCallable(String path) throws URISyntaxException {
-		return () -> jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
-			.path(path)
-			.request()
-			.get();
 	}
 }

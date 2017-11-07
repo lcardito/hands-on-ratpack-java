@@ -24,7 +24,8 @@ public class UserRouter implements Action<Chain> {
 			ctx.byMethod(m -> {
 				m.get(() -> {
 					log.info("Getting user details");
-					ctx.render("user");
+					log.info(Thread.currentThread().getName());
+					ctx.render(String.valueOf(System.currentTimeMillis()));
 				});
 				m.post(() -> ctx.render("user"));
 			});
