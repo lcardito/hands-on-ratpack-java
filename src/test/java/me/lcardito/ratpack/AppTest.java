@@ -1,68 +1,178 @@
 package me.lcardito.ratpack;
 
+import com.github.tomakehurst.wiremock.junit.WireMockRule;
+import io.vavr.control.Try;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.glassfish.jersey.client.ClientConfig;
+import org.glassfish.jersey.client.ClientProperties;
+import org.glassfish.jersey.client.JerseyClient;
+import org.glassfish.jersey.client.JerseyClientBuilder;
+import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import ratpack.test.embed.EmbeddedApp;
+import ratpack.test.MainClassApplicationUnderTest;
+import ratpack.test.ServerBackedApplicationUnderTest;
 
+import javax.ws.rs.client.Entity;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static java.util.Arrays.asList;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
-import static ratpack.test.embed.EmbeddedApp.fromServer;
+
 
 @RunWith(JUnitParamsRunner.class)
 public class AppTest {
 
-	private static EmbeddedApp testApp;
+	@Rule
+	public WireMockRule wireMockRule = new WireMockRule(9081);
+
+	private static ServerBackedApplicationUnderTest serverBackedApplicationUnderTest;
+
+	private JerseyClient jerseyClient;
 
 	@BeforeClass
-	public static void setUp() throws Exception {
-		testApp = fromServer(
-			App.createServer()
-		);
+	public static void startServer() {
+		serverBackedApplicationUnderTest = new MainClassApplicationUnderTest(App.class);
+	}
+
+	@Before
+	public void setUp() throws Exception {
+		serverBackedApplicationUnderTest.getAddress();
+
+		ClientConfig config = new ClientConfig();
+		config.property(ClientProperties.READ_TIMEOUT, 20000);
+		jerseyClient = new JerseyClientBuilder().withConfig(config).build();
 	}
 
 	@Test
 	public void shouldRespondToRootPath() throws Exception {
-		testApp.test(testHttpClient -> assertThat(testHttpClient.get("/").getBody().getText(), is("Hello Devoxx!")));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString())).request().get();
+
+		assertThat(response.getStatus(), is(200));
+		assertThat(response.readEntity(String.class), is("Hello Devoxx!"));
 	}
 
 	@Test
 	public void shouldResponseToGetUser() throws Exception {
-		testApp.test(client -> assertThat(client.get("/user").getBody().getText(), is("user")));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path("user")
+			.request()
+			.get();
+
+		assertThat(response.getStatus(), is(200));
+		assertThat(response.readEntity(String.class), is("user"));
 	}
 
 	@Test
 	@Parameters({"luigi", "gigi"})
 	public void shouldRespondToGetUserOnUserNames(String name) throws Exception {
-		testApp.test(client -> assertThat(client.get("/user/" + name).getBody().getText(), is("user/" + name)));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path("user/" + name)
+			.request()
+			.get();
+
+		assertThat(response.getStatus(), is(200));
+		assertThat(response.readEntity(String.class), is("user/" + name));
 	}
 
 	@Test
 	@Parameters({"luigi", "gigi"})
 	public void shouldRespondToGetUserTweets(String name) throws Exception {
-		testApp.test(client -> assertThat(client.get("/user/" + name + "/tweets").getBody().getText(), is("user/" + name + "/tweets")));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path("user/" + name + "/tweets")
+			.request()
+			.get();
+
+		assertThat(response.getStatus(), is(200));
+		assertThat(response.readEntity(String.class), is("user/" + name + "/tweets"));
 	}
 
 	@Test
 	@Parameters({"luigi", "gigi"})
 	public void shouldRespondToGetUserFriends(String name) throws Exception {
-		testApp.test(client -> assertThat(client.get("/user/" + name + "/friends").getBody().getText(), is("user/" + name + "/friends")));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path("user/" + name + "/friends")
+			.request()
+			.get();
+
+		assertThat(response.getStatus(), is(200));
+		assertThat(response.readEntity(String.class), is("user/" + name + "/friends"));
 	}
 
 	@Test
 	public void shouldRespondToPostUser() throws Exception {
-		testApp.test(client -> assertThat(client.post("user").getBody().getText(), is("user")));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path("user")
+			.request()
+			.post(Entity.entity("{name: 'Luigi'}", MediaType.APPLICATION_JSON_TYPE));
+
+
+		assertThat(response.getStatus(), is(200));
+		assertThat(response.readEntity(String.class), is("user"));
 	}
 
 	@Test
 	public void shouldMethodNotAllowedToPutUsers() throws Exception {
-		testApp.test(client -> assertThat(client.put("user").getStatusCode(), is(405)));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path("user")
+			.request()
+			.put(Entity.entity("{name: 'Luigi'}", MediaType.APPLICATION_JSON_TYPE));
+
+
+		assertThat(response.getStatus(), is(405));
 	}
 
 	@Test
 	public void shouldServeStaticFile() throws Exception {
-		testApp.test(client -> assertThat(client.get("assets/js/app.js").getBody().getText(), is("var message = 'Hello Devoxx!';\n")));
+		Response response = jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path("assets/js/app.js")
+			.request()
+			.get();
+
+		assertThat(response.getStatus(), is(200));
+		assertThat(response.readEntity(String.class), is("var message = 'Hello Devoxx!';\n"));
+	}
+
+	@Test
+	public void shouldNotBlockWhenUsingIO() throws Exception {
+		wireMockRule.stubFor(get(urlMatching(".*"))
+			.willReturn(aResponse()
+				.withStatus(200)
+				.withFixedDelay(10000)
+				.withBody("My long tweets")
+			));
+
+		ExecutorService executorService = Executors.newFixedThreadPool(2);
+
+
+		List<Try> responses = executorService
+			.invokeAll(asList(getResponseCallable("user"), getResponseCallable("external"), getResponseCallable("user")))
+			.parallelStream()
+			.sequential()
+			.map(responseFuture -> Try.of(responseFuture::get)).collect(Collectors.toList());
+
+		executorService.shutdownNow();
+
+		wireMockRule.verify(1, getRequestedFor(urlPathMatching(".*")));
+	}
+
+	private Callable<Response> getResponseCallable(String path) throws URISyntaxException {
+		return () -> jerseyClient.target(new URI(serverBackedApplicationUnderTest.getAddress().toString()))
+			.path(path)
+			.request()
+			.get();
 	}
 }
