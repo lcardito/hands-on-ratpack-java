@@ -160,7 +160,7 @@ public class AppTest {
 				.get());
 
 		extFuture.thenAccept(response -> {
-			System.out.println("Done with external");
+			System.out.println("Done with slow endpoint");
 			lock.countDown();
 		});
 
@@ -173,7 +173,7 @@ public class AppTest {
 				.get());
 
 		userFuture.thenAccept(response -> {
-			System.out.println("Done with user");
+			System.out.println("Done with fast endpoint");
 			lock.countDown();
 		});
 
