@@ -155,7 +155,7 @@ public class AppTest {
 
 		CompletableFuture<Response> extFuture = CompletableFuture.supplyAsync(() ->
 			jerseyClient.target(Try.of(() -> new URI(serverBackedApplicationUnderTest.getAddress().toString())).get())
-				.path("external")
+				.path("external/slow")
 				.request()
 				.get());
 
@@ -168,7 +168,7 @@ public class AppTest {
 
 		CompletableFuture<Response> userFuture = CompletableFuture.supplyAsync(() ->
 			jerseyClient.target(Try.of(() -> new URI(serverBackedApplicationUnderTest.getAddress().toString())).get())
-				.path("user")
+				.path("external/fast")
 				.request()
 				.get());
 
@@ -179,6 +179,33 @@ public class AppTest {
 
 		assertThat(lock.await(2500, TimeUnit.MILLISECONDS), is(true));;
 		wireMockRule.verify(1, getRequestedFor(urlPathMatching(".*")));
-
 	}
+
+	@Test
+	public void shouldHandleExternalServiceNotFound() throws Exception {
+		wireMockRule.stubFor(get(urlMatching(".*"))
+			.willReturn(aResponse()
+				.withStatus(404)
+			));
+
+		Response response = jerseyClient.target(Try.of(() -> new URI(serverBackedApplicationUnderTest.getAddress().toString())).get())
+			.path("external/slow")
+			.request()
+			.get();
+
+		assertThat(response.getStatus(), is(404));
+	}
+
+	@Test
+	public void shouldHandleExternalServiceErrors() throws Exception {
+		wireMockRule.stop();
+
+		Response response = jerseyClient.target(Try.of(() -> new URI(serverBackedApplicationUnderTest.getAddress().toString())).get())
+			.path("external/slow")
+			.request()
+			.get();
+
+		assertThat(response.getStatus(), is(503));
+	}
+
 }

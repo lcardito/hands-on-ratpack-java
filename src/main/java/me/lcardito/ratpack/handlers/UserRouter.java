@@ -22,11 +22,7 @@ public class UserRouter implements Action<Chain> {
 		@Override
 		public void handle(Context ctx) throws Exception {
 			ctx.byMethod(m -> {
-				m.get(() -> {
-					log.info("Getting user details");
-					log.info(Thread.currentThread().getName());
-					ctx.render(String.valueOf(System.currentTimeMillis()));
-				});
+				m.get(() -> ctx.render("user"));
 				m.post(() -> ctx.render("user"));
 			});
 		}
